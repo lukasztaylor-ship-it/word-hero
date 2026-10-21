@@ -1,9 +1,18 @@
 /* Word Hero v0.5: original procedural arcade audio; no samples or borrowed melodies. */
 const arcadeAudio = (() => {
-  const defaults = { muted: false, music: true, effectsVolume: 0.65, musicVolume: 0.25 };
+  // Five original compositions: distinct melodies, harmonies and tempos.
+  const tracks = {
+    adventure: { beat: .16, lead: 'square', melody: [76,0,71,74,79,76,0,69,74,78,71,0,67,74,69,0, 76,79,83,0,81,76,74,71,78,74,69,0,71,74,76,0], bass: [40,43,38,40,45,43,38,40] },
+    speedrun: { beat: .115, lead: 'square', melody: [74,77,81,77,72,76,79,76,70,74,77,81,79,76,72,0, 74,81,86,81,84,79,76,72,82,77,74,70,76,79,81,0], bass: [38,36,34,36,38,36,34,33] },
+    starlight: { beat: .215, lead: 'triangle', melody: [83,0,78,0,81,78,74,0,76,0,81,0,78,74,71,0, 78,0,85,83,81,0,78,0,74,76,78,0,73,0,71,0], bass: [47,43,45,42,47,43,40,42] },
+    neon: { beat: .145, lead: 'square', melody: [69,0,76,72,0,79,76,0,67,74,0,71,78,0,74,71, 69,72,0,81,79,0,76,72,74,0,78,81,0,78,74,0], bass: [33,41,43,40,33,41,38,40] },
+    victory: { beat: .18, lead: 'square', melody: [72,76,79,0,81,79,76,0,74,77,81,0,83,81,77,0, 76,79,84,83,81,0,79,76,77,74,71,0,74,79,72,0], bass: [36,45,38,43,40,45,41,43] }
+  };
+  const defaults = { muted: false, music: true, track: 'adventure', effectsVolume: 0.65, musicVolume: 0.25 };
   let settings = { ...defaults };
   try {
     const saved = JSON.parse(localStorage.getItem('wordhero-audio'));
+    if (Object.hasOwn(tracks, saved?.track)) settings.track = saved.track;
     if (typeof saved?.muted === 'boolean') settings.muted = saved.muted;
     // Adopt the new default once, then remember deliberate toggle changes.
     if (saved?.musicDefaultOn === true && typeof saved.music === 'boolean') settings.music = saved.music;
@@ -49,18 +58,16 @@ const arcadeAudio = (() => {
     timer = null;
     if (context) stopVoices(music);
   }
-  // An original 16-step phrase, with triangle bass underneath the pulse lead.
-  const melody = [76, 0, 71, 74, 79, 76, 0, 69, 74, 78, 71, 0, 67, 74, 69, 0];
-  const bass = [40, 40, 43, 38];
   const hz = midi => 440 * 2 ** ((midi - 69) / 12);
   function schedule() {
     if (context.state !== 'running') return;
     if (nextBeat < context.currentTime) nextBeat = context.currentTime + .02;
+    const track = tracks[settings.track];
     while (nextBeat < context.currentTime + .12) {
-      const note = melody[step % melody.length];
-      if (note) tone(hz(note), nextBeat, .12, music, 'square', .10);
-      if (step % 4 === 0) tone(hz(bass[(step / 4) % bass.length]), nextBeat, .48, music, 'triangle', .28);
-      step = (step + 1) % 16; nextBeat += .16;
+      const note = track.melody[step];
+      if (note) tone(hz(note), nextBeat, track.beat * .75, music, track.lead, .10);
+      if (step % 4 === 0) tone(hz(track.bass[(step / 4) % track.bass.length]), nextBeat, track.beat * 3, music, 'triangle', .28);
+      step = (step + 1) % track.melody.length; nextBeat += track.beat;
     }
   }
   function sync() {
@@ -97,6 +104,7 @@ const arcadeAudio = (() => {
     mute.textContent = settings.muted ? 'Unmute' : 'Mute';
     mute.setAttribute('aria-pressed', String(settings.muted));
     document.getElementById('music-enabled').checked = settings.music;
+    document.getElementById('music-track').value = settings.track;
     for (const [id, key] of [['effects-volume', 'effectsVolume'], ['music-volume', 'musicVolume']]) {
       document.getElementById(id).value = Math.round(settings[key] * 100);
       document.getElementById(id + '-value').textContent = Math.round(settings[key] * 100) + '%';
@@ -109,6 +117,11 @@ const arcadeAudio = (() => {
   }
   document.getElementById('mute').addEventListener('click', () => update('muted', !settings.muted));
   document.getElementById('music-enabled').addEventListener('change', e => update('music', e.target.checked));
+  document.getElementById('music-track').addEventListener('change', e => {
+    if (!Object.hasOwn(tracks, e.target.value)) return;
+    stopMusic(); step = 0;
+    update('track', e.target.value);
+  });
   for (const [id, key] of [['effects-volume', 'effectsVolume'], ['music-volume', 'musicVolume']]) {
     document.getElementById(id).addEventListener('input', e => update(key, Number(e.target.value) / 100));
   }

@@ -5,7 +5,7 @@ const vm = require('node:vm');
 function setup({ unsupported = false, storageFails = false, preferences = null } = {}) {
   const elements = new Map(), listeners = {}, saved = new Map();
   if (preferences) saved.set('wordhero-audio', JSON.stringify(preferences));
-  const counts = { contexts: 0, tones: 0, intervals: 0 };
+  const counts = { contexts: 0, tones: 0, intervals: 0, frequencies: [] };
   function element(id) {
     if (!elements.has(id)) elements.set(id, { value: id === 'difficulty' ? 'normal' : '', textContent: '', style: {}, classList: { remove() {}, toggle() {} }, setAttribute(k,v) { this[k]=v; }, addEventListener(k,fn) { this[k]=fn; } });
     return elements.get(id);
@@ -14,7 +14,7 @@ function setup({ unsupported = false, storageFails = false, preferences = null }
   class AudioContext {
     constructor() { counts.contexts++; this.state='running'; this.currentTime=0; this.destination={}; }
     createGain() { return { gain: param(), connect() {}, disconnect() {} }; }
-    createOscillator() { return { frequency: param(), connect() {}, disconnect() {}, start() { counts.tones++; }, stop() {} }; }
+    createOscillator() { return { frequency: { setValueAtTime(f) { counts.frequencies.push(f); } }, connect() {}, disconnect() {}, start() { counts.tones++; }, stop() {} }; }
     resume() { this.state='running'; return Promise.resolve(); }
   }
   const drawing = new Proxy({}, { get: (_,k) => k === 'measureText' ? () => ({width:100}) : k === 'createLinearGradient' ? () => ({addColorStop(){}}) : () => {} });
@@ -74,4 +74,23 @@ test('number keys still answer after clicking Start',()=>{
   const app=setup(); app.run('start()');
   app.listeners['window:keydown']({key:String(app.run('round.correct')+1),target:{closest:selector=>selector==='button'?{}:null},preventDefault(){}});
   assert.equal(app.run('combo'),1);
+});
+test('all five tracks play and switch without changing game or duplicating timers',()=>{
+  const app=setup(); app.listeners.pointerdown(); app.run('start()');
+  const signatures=[];
+  for (const track of ['adventure','speedrun','starlight','neon','victory']) {
+    app.counts.frequencies.length=0;
+    app.element('music-track').change({target:{value:track}});
+    assert.equal(app.counts.intervals,1);
+    assert.equal(app.run('score'),0); assert.equal(app.run('lives'),5);
+    signatures.push(app.counts.frequencies.join(','));
+    assert.equal(JSON.parse(app.saved.get('wordhero-audio')).track,track);
+  }
+  assert.equal(new Set(signatures).size,5);
+  app.run('pause()'); app.element('music-track').change({target:{value:'neon'}});
+  assert.equal(app.counts.intervals,0);
+  app.run('pause()'); assert.equal(app.counts.intervals,1);
+  const reloaded=setup({preferences:JSON.parse(app.saved.get('wordhero-audio'))});
+  assert.equal(reloaded.element('music-track').value,'neon');
+  assert.equal(setup({preferences:{track:'invalid'}}).element('music-track').value,'adventure');
 });

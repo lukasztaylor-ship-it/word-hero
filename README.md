@@ -11,3 +11,5 @@ Audio unlocks after a tap or keypress. Music defaults on (the toggle remains ava
 Static GitHub Pages site served from main; no build or dependencies required.
 
 Run regression tests with Node.js: `node --test test.cjs`.
+
+Choose from five original tracks: Arcade Adventure, Speed Run, Starlight Study, Neon Nights and Victory Circuit. Switching tracks restarts the music phrase without restarting the game; the selection is saved locally.
