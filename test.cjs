@@ -1,0 +1,66 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+function setup({ unsupported = false, storageFails = false } = {}) {
+  const elements = new Map(), listeners = {}, saved = new Map();
+  const counts = { contexts: 0, tones: 0, intervals: 0 };
+  function element(id) {
+    if (!elements.has(id)) elements.set(id, { value: id === 'difficulty' ? 'normal' : '', textContent: '', style: {}, classList: { remove() {}, toggle() {} }, setAttribute(k,v) { this[k]=v; }, addEventListener(k,fn) { this[k]=fn; } });
+    return elements.get(id);
+  }
+  const param = () => ({ setTargetAtTime() {}, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {}, cancelScheduledValues() {} });
+  class AudioContext {
+    constructor() { counts.contexts++; this.state='running'; this.currentTime=0; this.destination={}; }
+    createGain() { return { gain: param(), connect() {}, disconnect() {} }; }
+    createOscillator() { return { frequency: param(), connect() {}, disconnect() {}, start() { counts.tones++; }, stop() {} }; }
+    resume() { this.state='running'; return Promise.resolve(); }
+  }
+  const drawing = new Proxy({}, { get: (_,k) => k === 'measureText' ? () => ({width:100}) : k === 'createLinearGradient' ? () => ({addColorStop(){}}) : () => {} });
+  element('game').getContext = () => drawing;
+  const document = { hidden:false, getElementById:element, querySelectorAll:()=>[], addEventListener(k,fn){ listeners[k]=fn; } };
+  const sandbox = { document, window: { AudioContext:unsupported?undefined:AudioContext, addEventListener(k,fn) { listeners['window:'+k]=fn; } }, localStorage: { getItem(k){ if(storageFails)throw Error(); return saved.get(k)||null; }, setItem(k,v){ if(storageFails)throw Error(); saved.set(k,v); } }, performance:{now:()=>1000}, requestAnimationFrame(){}, setInterval(){counts.intervals++;return counts.intervals;}, clearInterval(){counts.intervals--;}, console };
+  vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(__dirname+'/audio.js','utf8'),sandbox);
+  const html=fs.readFileSync(__dirname+'/index.html','utf8');
+  vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
+  return { run:code=>vm.runInContext(code,sandbox), counts, element, listeners, saved, document };
+}
+test('gesture unlock, opt-in music, pause/restart/game-over and volume persistence',()=>{
+  const app=setup(); assert.equal(app.counts.contexts,0);
+  app.listeners.pointerdown(); assert.equal(app.counts.contexts,1);
+  app.run('start()'); assert.equal(app.counts.intervals,0);
+  app.element('music-enabled').change({target:{checked:true}}); assert.equal(app.counts.intervals,1);
+  app.run('pause()'); assert.equal(app.counts.intervals,0);
+  app.run('pause()'); assert.equal(app.counts.intervals,1);
+  app.element('mute').click(); assert.equal(app.counts.intervals,0); assert.equal(app.element('mute')['aria-pressed'],'true');
+  app.element('mute').click(); assert.equal(app.counts.intervals,1);
+  app.element('effects-volume').input({target:{value:'37'}});
+  assert.equal(JSON.parse(app.saved.get('wordhero-audio')).effectsVolume,.37);
+  app.document.hidden=true; app.listeners.visibilitychange(); assert.equal(app.counts.intervals,0);
+  app.document.hidden=false; app.listeners.visibilitychange(); assert.equal(app.counts.intervals,1);
+  app.run('start()'); assert.equal(app.counts.intervals,1);
+  app.run('gameOver()'); assert.equal(app.counts.intervals,0);
+});
+test('all effect sequences, combo milestone, correct score, wrong/miss and final life',()=>{
+  const app=setup(); app.listeners.pointerdown();
+  for(const name of ['correct','wrong','combo','miss','gameOver']) { const before=app.counts.tones; app.run(`arcadeAudio.play('${name}')`); assert.ok(app.counts.tones>before,name); }
+  app.run("globalThis.events=[];arcadeAudio.play=name=>events.push(name);start();hit(round.correct)");
+  assert.equal(app.run('score'),205); assert.equal(app.run('combo'),1); assert.equal(app.run('events.at(-1)'),'correct');
+  app.run('combo=4;hit(round.correct)'); assert.equal(app.run('events.at(-1)'),'combo');
+  app.run('hit((round.correct+1)%4)'); assert.equal(app.run('lives'),4); assert.equal(app.run('combo'),0); assert.equal(app.run('events.at(-1)'),'wrong'); assert.ok(app.run('review && !round'));
+  app.run('nextRound();miss()'); assert.equal(app.run('lives'),3); assert.equal(app.run('events.at(-1)'),'miss');
+  app.run('nextRound();lives=1;miss()'); assert.equal(app.run('running'),false); assert.equal(app.run('events.at(-1)'),'gameOver');
+});
+test('unsupported audio and blocked storage preserve gameplay',()=>{
+  const app=setup({unsupported:true,storageFails:true}); app.listeners.pointerdown(); app.run('start();hit(round.correct);pause();pause()'); assert.equal(app.run('score'),205);
+});
+test('native audio controls keep keyboard behavior',()=>{
+  const app=setup(); const event={key:'Enter',target:{closest:()=>({})},preventDefault(){throw Error('native key intercepted');}};
+  app.listeners['window:keydown'](event); assert.equal(app.run('running'),false);
+});
+test('number keys still answer after clicking Start',()=>{
+  const app=setup(); app.run('start()');
+  app.listeners['window:keydown']({key:String(app.run('round.correct')+1),target:{closest:selector=>selector==='button'?{}:null},preventDefault(){}});
+  assert.equal(app.run('combo'),1);
+});
