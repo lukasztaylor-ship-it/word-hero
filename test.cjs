@@ -75,6 +75,24 @@ test('number keys still answer after clicking Start',()=>{
   app.listeners['window:keydown']({key:String(app.run('round.correct')+1),target:{closest:selector=>selector==='button'?{}:null},preventDefault(){}});
   assert.equal(app.run('combo'),1);
 });
+test('Space starts, pauses, resumes and restarts after game over without key-repeat toggles',()=>{
+  const app=setup();
+  const press=(repeat=false)=>app.listeners['window:keydown']({key:' ',code:'Space',repeat,target:{closest:()=>null},preventDefault(){}});
+  press(); assert.equal(app.run('running'),true); assert.equal(app.run('paused'),false);
+  press(true); assert.equal(app.run('paused'),false);
+  press(); assert.equal(app.run('paused'),true);
+  press(true); assert.equal(app.run('paused'),true);
+  press(); assert.equal(app.run('paused'),false);
+  app.run('gameOver()'); press(); assert.equal(app.run('running'),true); assert.equal(app.run('lives'),5);
+});
+test('Space works on focused game buttons and keeps native audio controls',()=>{
+  const app=setup();
+  const event={key:' ',code:'Space',target:{closest:s=>s==='button'||s==='#start,#pause,[data-lane]'?{}:null},preventDefault(){}};
+  app.listeners['window:keydown'](event); assert.equal(app.run('running'),true);
+  app.listeners['window:keydown'](event); assert.equal(app.run('paused'),true);
+  app.listeners['window:keydown']({...event,target:{closest:s=>s==='button'?{}:null},preventDefault(){throw Error('audio button key intercepted');}});
+  assert.equal(app.run('paused'),true);
+});
 test('all five tracks play and switch without changing game or duplicating timers',()=>{
   const app=setup(); app.listeners.pointerdown(); app.run('start()');
   const signatures=[];

@@ -2,7 +2,7 @@
 
 Play at https://lukasztaylor-ship-it.github.io/word-hero/
 
-Translate Polish vocabulary into English with keys 1–4 or the lane buttons. Enter starts; Space pauses. Existing scoring, difficulty, best score, lives and correction review are preserved.
+Translate Polish vocabulary into English with keys 1–4 or the lane buttons. Space starts, pauses or resumes the game; Enter also starts. Existing scoring, difficulty, best score, lives and correction review are preserved.
 
 Original procedural Web Audio effects cover correct answers, wrong answers, every fifth consecutive correct answer, misses and game over. Square-wave lead and triangle bass create an optional original chiptune; no samples or copyrighted melodies are used.
 
