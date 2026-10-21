@@ -1,10 +1,12 @@
 /* Word Hero v0.5: original procedural arcade audio; no samples or borrowed melodies. */
 const arcadeAudio = (() => {
-  const defaults = { muted: false, music: false, effectsVolume: 0.65, musicVolume: 0.25 };
+  const defaults = { muted: false, music: true, effectsVolume: 0.65, musicVolume: 0.25 };
   let settings = { ...defaults };
   try {
     const saved = JSON.parse(localStorage.getItem('wordhero-audio'));
-    for (const key of ['muted', 'music']) if (typeof saved?.[key] === 'boolean') settings[key] = saved[key];
+    if (typeof saved?.muted === 'boolean') settings.muted = saved.muted;
+    // Adopt the new default once, then remember deliberate toggle changes.
+    if (saved?.musicDefaultOn === true && typeof saved.music === 'boolean') settings.music = saved.music;
     for (const key of ['effectsVolume', 'musicVolume']) if (Number.isFinite(saved?.[key])) settings[key] = Math.max(0, Math.min(1, saved[key]));
   } catch {}
   let context, master, effects, music, timer = null, active = false, step = 0, nextBeat = 0;
@@ -102,7 +104,7 @@ const arcadeAudio = (() => {
   }
   function update(key, value) {
     settings[key] = value;
-    try { localStorage.setItem('wordhero-audio', JSON.stringify(settings)); } catch {}
+    try { localStorage.setItem('wordhero-audio', JSON.stringify({ ...settings, musicDefaultOn: true })); } catch {}
     renderSettings(); unlock(); sync();
   }
   document.getElementById('mute').addEventListener('click', () => update('muted', !settings.muted));

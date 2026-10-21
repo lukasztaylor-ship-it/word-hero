@@ -2,8 +2,9 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-function setup({ unsupported = false, storageFails = false } = {}) {
+function setup({ unsupported = false, storageFails = false, preferences = null } = {}) {
   const elements = new Map(), listeners = {}, saved = new Map();
+  if (preferences) saved.set('wordhero-audio', JSON.stringify(preferences));
   const counts = { contexts: 0, tones: 0, intervals: 0 };
   function element(id) {
     if (!elements.has(id)) elements.set(id, { value: id === 'difficulty' ? 'normal' : '', textContent: '', style: {}, classList: { remove() {}, toggle() {} }, setAttribute(k,v) { this[k]=v; }, addEventListener(k,fn) { this[k]=fn; } });
@@ -26,10 +27,12 @@ function setup({ unsupported = false, storageFails = false } = {}) {
   vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
   return { run:code=>vm.runInContext(code,sandbox), counts, element, listeners, saved, document };
 }
-test('gesture unlock, opt-in music, pause/restart/game-over and volume persistence',()=>{
+test('gesture unlock, default music, pause/restart/game-over and volume persistence',()=>{
   const app=setup(); assert.equal(app.counts.contexts,0);
   app.listeners.pointerdown(); assert.equal(app.counts.contexts,1);
-  app.run('start()'); assert.equal(app.counts.intervals,0);
+  assert.equal(app.element('music-enabled').checked,true);
+  app.run('start()'); assert.equal(app.counts.intervals,1);
+  app.element('music-enabled').change({target:{checked:false}}); assert.equal(app.counts.intervals,0);
   app.element('music-enabled').change({target:{checked:true}}); assert.equal(app.counts.intervals,1);
   app.run('pause()'); assert.equal(app.counts.intervals,0);
   app.run('pause()'); assert.equal(app.counts.intervals,1);
@@ -41,6 +44,14 @@ test('gesture unlock, opt-in music, pause/restart/game-over and volume persisten
   app.document.hidden=false; app.listeners.visibilitychange(); assert.equal(app.counts.intervals,1);
   app.run('start()'); assert.equal(app.counts.intervals,1);
   app.run('gameOver()'); assert.equal(app.counts.intervals,0);
+});
+test('old default migrates once and subsequent opt-out persists',()=>{
+  const migrated=setup({preferences:{music:false,effectsVolume:.4}});
+  assert.equal(migrated.element('music-enabled').checked,true);
+  assert.equal(migrated.element('effects-volume').value,40);
+  migrated.element('music-enabled').change({target:{checked:false}});
+  const reloaded=setup({preferences:JSON.parse(migrated.saved.get('wordhero-audio'))});
+  assert.equal(reloaded.element('music-enabled').checked,false);
 });
 test('all effect sequences, combo milestone, correct score, wrong/miss and final life',()=>{
   const app=setup(); app.listeners.pointerdown();
